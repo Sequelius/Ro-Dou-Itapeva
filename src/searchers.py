@@ -155,6 +155,7 @@ class DOUSearcher(BaseSearcher):
         ignore_signature_match: bool,
         force_rematch: bool,
         department: List[str],
+        pubtype: List[str],
         reference_date: datetime,
     ):
         search_results = self._search_all_terms(
@@ -167,6 +168,7 @@ class DOUSearcher(BaseSearcher):
             ignore_signature_match,
             force_rematch,
             department,
+            pubtype
         )
         group_results = self._group_results(search_results, term_list, department)
 
@@ -183,6 +185,7 @@ class DOUSearcher(BaseSearcher):
         ignore_signature_match,
         force_rematch,
         department,
+        pubtype
     ) -> dict:
         search_results = {}
         for search_term in term_list:
@@ -211,6 +214,9 @@ class DOUSearcher(BaseSearcher):
             if department:
                 self._match_department(results, department)
                 # results = [r for r in results if any(item in r.get('hierarchyList') for item in department)]
+
+            if pubtype:
+                self._match_pubtype(results, pubtype)
 
             self._render_section_descriptions(results)
 
@@ -305,9 +311,18 @@ class DOUSearcher(BaseSearcher):
         """
         logging.info("Applying filter for department list")
         logging.info(department)
-        logging.info(results)
         for result in results[:]:
             if not any(dpt in result["hierarchyList"] for dpt in department):
+                results.remove(result)
+
+    def _match_pubtype(self, results: list, pubtype: list) -> list:
+        """Aplica o filtro nos resultados pela lista de tipos de publicações
+        no parâmetro 'pubtype' do YAML
+        """
+        logging.info("Applying filter for pubtype list")
+        logging.info(pubtype)
+        for result in results[:]:
+            if not any(pub in result["arttype"] for pub in pubtype):
                 results.remove(result)
 
     def _get_prior_and_matched_name(self, raw_html: str) -> Tuple[str, str]:
@@ -429,6 +444,7 @@ class INLABSSearcher(BaseSearcher):
         ignore_signature_match: bool,
         full_text: bool,
         use_summary: bool,
+        pubtype: List[str],
         reference_date: datetime = datetime.now(),
     ) -> Dict:
         """
@@ -447,6 +463,7 @@ class INLABSSearcher(BaseSearcher):
                 signature content.
             full_text (bool): If trim result text content
             use_summary (bool): If exists, use summary as excerpt or full text
+            pubtype (List[str]): List of publication types to filter the search.
             reference_date (datetime, optional): Reference date for the
                 search. Defaults to now.
 
@@ -457,7 +474,7 @@ class INLABSSearcher(BaseSearcher):
         inlabs_hook = INLABSHook()
         search_terms = self._prepare_search_terms(terms)
         search_terms = self._apply_filters(
-            search_terms, dou_sections, department, reference_date, search_date
+            search_terms, dou_sections, department, pubtype, reference_date, search_date
         )
 
         search_results = inlabs_hook.search_text(
@@ -489,11 +506,12 @@ class INLABSSearcher(BaseSearcher):
         search_terms: Dict,
         sections: List[str],
         department: List[str],
+        pubtype: List[str],
         reference_date: datetime,
         search_date: str,
     ):
-        """Apply `sections`, `departments` and `date` filters to the
-        search_terms dictionary."""
+        """Apply `sections`, `departments`, `pubtypes` and `date` filters
+        to the search_terms dictionary."""
 
         if "TODOS" in sections:
             search_terms["pubname"] = ["DO1", "DO2", "DO3"]
@@ -501,6 +519,8 @@ class INLABSSearcher(BaseSearcher):
             search_terms["pubname"] = self._parse_sections(sections)
         if department:
             search_terms["artcategory"] = department
+        if pubtype:
+            search_terms["arttype"] = pubtype
         publish_from = calculate_from_datetime(
             reference_date, SearchDate[search_date]
         ).strftime("%Y-%m-%d")
